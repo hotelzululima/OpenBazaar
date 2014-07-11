@@ -1,11 +1,15 @@
 OpenBazaar is a decentralized marketplace proof of concept. It is based off of the POC code by the darkmarket team and protected by the GPL.
 
-See a demonstration of the Proof Of Concept here: https://www.youtube.com/watch?v=lHVqH8XO1Pk#t=86
-Try out a demonstration at: http://seed.openbazaar.org:8888
+* Official Site: http://openbazaar.org
+* Forums: http://forum.openbazaar.org
+* IRC Chat: #OpenBazaar on Freenode
 
-This project is alpha and all feedback is welcome at: http://www.reddit.com/r/Bitcoin/comments/23y80c
+<strong>Online Test Drive:</strong> http://seed.openbazaar.org:8888
 
-Official site: http://openbazaar.org (currently a placeholder)
+<strong>Original Presentation at Toronto Hackathon:</strong> https://www.youtube.com/watch?v=lHVqH8XO1Pk#t=86
+
+<strong>Donate to the Project</strong> BTC: 16uniUFpbhrAxAWMZ9qEkcT9Wf34ETB4Tt
+
 
 ### IRC Chat
 We are continually on IRC chat at #OpenBazaar on Freenode
@@ -14,6 +18,7 @@ We are continually on IRC chat at #OpenBazaar on Freenode
 ## Features (Notional)
 - Full market editor for management of items catalog
 - Order management system
+- Ricardian-style contracts  
 - Escrow-based transactions
 - Arbiter management
 - Private messaging
@@ -23,93 +28,9 @@ We are continually on IRC chat at #OpenBazaar on Freenode
 
 All features are currently in alpha stage. Current functionality includes starting a connection to the distributed marketplace and viewing content in a browser. Transactions are not possible.
 
-## Quick Start
+## Build Instructions
 
-These instructions download a VirtualBox image (Ubuntu Trusty) and use Vagrant to configure an OpenBazaar node inside the virtual environment. When the node is running, you can navigate to http://localhost:8888 on your local machine to access the client. This setup should take less than 10GB and about an hour. These instructions should include all necessary code for starting OpenBazaar.
-
-1. This example is built on an Ubuntu Trusty host. Doesn't work from inside a virtual machine.
-
-    `sudo apt-get update`
-
-    `sudo apt-get install virtualbox git vagrant`
-
-2. clone openbazaar:
-
-    `git clone https://github.com/OpenBazaar/OpenBazaar.git`
-
-    `cd OpenBazaar`
-
-3. Set up vagrant: (this will take a while!)
-
-    `vagrant up`
-
-4. Log into the vagrant instance:
-
-    `vagrant ssh`
-
-5. Start the OpenBazaar node:
-
-    `cd /vagrant && ./run_dev.sh`
-
-6. Now return to your host and open your web browser to:
-
-    `http://127.0.0.1:8888`
-
-
-## Dependencies
-
-**NOTE:** These dependencies are for reference, they do not need to be manually installed if the Quick Start guide is used.
-
-- https://github.com/warner/python-ecdsa
-- https://github.com/darkwallet/python-obelisk
-- MongoDB
-
-`pip install pyzmq`
-`pip install tornado`
-`pip install pyelliptic`
-`pip install pymongo`
-`pip install pycountry`
-
-1. Install python-obelisk
-2. git clone https://github.com/darkwallet/python-obelisk
-3. python setup.py install
-
-
-### MongoDB
-
-OpenBazaar now uses MongoDB as the backend for storing persistent data. At the moment only orders are being tracked there, but this will be fleshed out ongoing. You will need to set up a MongoDB instance on your machine outside of this software and create a database called 'openbazaar'. There is no authentication or encryption configured, but I will be adding in support for this soon.
-
-- Install MongoDB with OpenSSL
-- Start MongoDB
-- Create database named openbazaar
-
-From command line:
-`mongo`
-`use openbazaar`
-
-
-### OSX Users
-
-For OSX there is a CLANG error when installing pyzmq but you can use the following command to ignore warnings:
-
-`sudo ARCHFLAGS=-Wno-error=unused-command-line-argument-hard-error-in-future easy_install pyzmq`
-
-### Issues with ./run_dev.sh
-If you're getting errors saying `ZMQError: Can't assign requested address` then you probably need to bring up some loopback adapters for those
-IPs higher than 127.0.0.1.
-
-sudo ifconfig lo:1 127.0.0.2
-sudo ifconfig lo:2 127.0.0.3
-sudo ifconfig lo:3 127.0.0.4
-
-## Identity Server
-
-To get the identity server running for querying nicknames in the UI you need to start the identity server. From the base directory of the software run the following:
-
-`python ident/identity.py`
-
-### Tests
-Install [behave](https://github.com/behave/behave) and run `behave` in the OpenBazaar folder. The tests themselves are located in the `features` folder.
+Read the [build instructions wiki](https://github.com/OpenBazaar/OpenBazaar/wiki/Build-Instructions).
 
 
 ## Artwork Contributions
@@ -119,13 +40,25 @@ contributed by Jacob Payne
 ![](http://i.imgur.com/WwPUXGS.png)
 contributed by Dean Masley
 
+## Theory Work
 
+1. [Ricardian Contracts](https://gist.github.com/drwasho/a5380544c170bdbbbad8) by Dr Washington Sanchez
+2. [P2P Lending on OpenBazaar](https://gist.github.com/drwasho/2c40b91e169f55988618) by Dr Washington Sanchez
+3. [Auctions on OpenBazaar](https://gist.github.com/drwasho/d923d2d37f544ea22e6f) by Dr Washington Sanchez
+4. [Services on OpenBazaar](https://gist.github.com/drwasho/632d126a4189467c1280) by Dr Washington Sanchez
+5. [The Issuance and P2P Transfer of Shares on OpenBazaar](https://gist.github.com/drwasho/3670bb1c59e620fffb24) by Dr Washington Sanchez and Delain Markos
+6. [Voting Pools in OpenBazaar](https://gist.github.com/drwasho/c04f16fcc7be9a666e90) by Dr Washington Sanchez
+7. [Distributed Currency Exchange](https://gist.github.com/drwasho/aa6ab79e92f2a876073e) by Dr Washington Sanchez
+8. [OpenBazaar Genesis Contract](https://gist.github.com/drwasho/76e1161db1e5b860598a) by Dr Washington Sanchez (arbiter), Brian Hoffman (buyer), and Samuel Patterson (seller)
+9. [A pseudonymous trust system for a decentralized anonymous marketplace](https://gist.github.com/dionyziz/e3b296861175e0ebea4b) by Dionysis Zindros
 
 ## Screenshot
 
-This screen shot looks horrible and is just a placeholder ATM. Designers wanted. Apply to brian@openbazaar.org if you're interested in helping out.
+Here are some screenshots of the alpha UI so far as well as the HTML contract generation tool being built.
 
 ![Screen 1](http://i.imgur.com/qwByrqk.png)
 ![Screen 2](http://i.imgur.com/v3gRVgi.png)
 ![Screen 3](http://i.imgur.com/65eSjjz.png)
+![Contract Templates](https://raw.githubusercontent.com/DelainM/OpenBazaar/html-contracts/html-contract-tools/resources/OB-HTML-Contract-tools.png)
+![Contract Tool](http://s29.postimg.org/aog95fcrr/Open_Bazaar_Contract_Maker.png)
 =======

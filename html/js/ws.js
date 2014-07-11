@@ -28,8 +28,11 @@ function Connection(onMessage) {
         "command": command,
         "params": msg
     };
+
     var message = JSON.stringify(request);    
     self.websocket.send(message);
 
   }
+
+
 }

@@ -1,25 +1,29 @@
-import tornado.websocket
 import threading
-import logging
 import json
-import tornado.ioloop
+import ast
 import random
-import protocol
-import obelisk
 import logging
+
+import tornado.websocket
+import tornado.ioloop
+
+import protocol
 import pycountry
+import gnupg
+import pprint
+
 
 class ProtocolHandler:
-    def __init__(self, transport, node, handler):
-        self.node = node
+    def __init__(self, transport, market, handler):
+        self._market = market
         self._transport = transport
         self._handler = handler
 
         # register on transport events to forward..
-        transport.add_callback('peer', self.on_node_peer)
-        transport.add_callback('peer_remove', self.on_node_remove_peer)
-        transport.add_callback('page', self.on_node_page)
-        transport.add_callback('all', self.on_node_message)
+        self._transport.add_callback('peer', self.on_node_peer)
+        self._transport.add_callback('peer_remove', self.on_node_remove_peer)
+        self._transport.add_callback('node_page', self.on_node_page)
+        self._transport.add_callback('all', self.on_node_message)
 
         # handlers from events coming from websocket, we shouldnt need this
         self._handlers = {
@@ -28,20 +32,26 @@ class ProtocolHandler:
             "query_page":          self.client_query_page,
             "review":          self.client_review,
             "order":          self.client_order,
-            "search":          self.client_search,
+            "search":          self.client_query_store_products,
             "shout":          self.client_shout,
+            "query_store_products":	  self.client_query_store_products,
             "query_orders":	  self.client_query_orders,
-            "query_products":	  self.client_query_products,
+            "query_contracts":	  self.client_query_contracts,
+            "query_messages":	  self.client_query_messages,
+            "send_message":	  self.client_send_message,
             "update_settings":	self.client_update_settings,
             "query_order":	self.client_query_order,
             "pay_order":	self.client_pay_order,
             "ship_order":	self.client_ship_order,
             "save_product":	self.client_save_product,
-            "remove_product":	self.client_remove_product,
+            "remove_contract":	self.client_remove_contract,
             "generate_secret":	self.client_generate_secret,
+            "republish_listing":	  self.client_republish_listing,
+            "import_raw_contract":	  self.client_import_raw_contract,
+            "create_contract":	  self.client_create_contract,
         }
 
-        self._log = logging.getLogger(self.__class__.__name__)
+        self._log = logging.getLogger('[%s] %s' % (self._transport._market_id, self.__class__.__name__))
 
     def send_opening(self):
         peers = self.get_peers()
@@ -50,15 +60,16 @@ class ProtocolHandler:
         for country in pycountry.countries:
           countryCodes.append({"code":country.alpha2, "name":country.name})
 
-        settings = self.node.get_settings()
+        settings = self._market.get_settings()
 
         message = {
             'type': 'myself',
             'pubkey': self._transport._myself.get_pubkey().encode('hex'),
             'peers': peers,
             'settings': settings,
+            'guid': self._transport.guid,
             'countryCodes': countryCodes,
-            'reputation': self.node.reputation.get_my_reputation()
+            'reputation': []#self._transport.reputation.get_my_reputation()
         }
 
         self.send_to_client(None, message)
@@ -73,37 +84,73 @@ class ProtocolHandler:
         self._log.info("Peers command")
         self.send_to_client(None, {"type": "peers", "peers": self.get_peers()})
 
+    def refresh_peers(self):
+        self._log.info("Peers command")
+        self.send_to_client(None, {"type": "peers", "peers": self.get_peers()})
+
     def client_query_page(self, socket_handler, msg):
-        self._log.info("Message: ", msg)
-        pubkey = msg['pubkey'].decode('hex')
-        self.node.query_page(pubkey)
-        self.node.reputation.query_reputation(pubkey)
+        self._log.info("Message: %s" % msg)
+        findGUID = msg['findGUID']
+
+        def cb(success):
+            if not success:
+                self.send_to_client(None, {"type": "peers", "peers": self.get_peers()})
+
+        self._market.query_page(findGUID, cb)
+        #self._market.reputation.query_reputation(guid)
+
 
     def client_query_orders(self, socket_handler, msg):
 
         self._log.info("Querying for Orders")
 
         # Query mongo for orders
-        orders = self.node.orders.get_orders()
+        orders = self._market.orders.get_orders()
 
         self.send_to_client(None, { "type": "myorders", "orders": orders } )
 
-    def client_query_products(self, socket_handler, msg):
+    def client_query_contracts(self, socket_handler, msg):
 
-        self._log.info("Querying for Products")
+        self._log.info("Querying for Contracts")
 
         # Query mongo for products
-        products = self.node.get_products()
+        contracts = self._market.get_contracts()
 
-        self.send_to_client(None, { "type": "products", "products": products } )
+        self.send_to_client(None, { "type": "contracts", "contracts": contracts } )
+
+    def client_query_messages(self, socket_handler, msg):
+
+        self._log.info("Querying for Messages")
+
+        # Query bitmessage for messages
+        messages = self._market.get_messages()
+
+        self.send_to_client(None, { "type": "messages", "messages": messages } )
+
+    def client_send_message(self, socket_handler, msg):
+
+        self._log.info("Sending message")
+
+        # Send message with market's bitmessage
+        self._market.send_message(msg)
+
+    def client_republish_listing(self, socket_handler, msg):
+
+        self._log.info("Republishing product listing")
+
+        # Query mongo for products
+        products = self._market.republish_listing(msg)
+
+    def client_import_raw_contract(self, socket_handler, contract):
+
+        self._log.info("Importing New Contract")
+        self._market.import_contract(contract)
 
     # Get a single order's info
     def client_query_order(self, socket_handler, msg):
 
-
-
         # Query mongo for order
-        order = self.node.orders.get_order(msg['orderId'])
+        order = self._market.orders.get_order(msg['orderId'])
 
         self.send_to_client(None, { "type": "orderinfo", "order": order } )
 
@@ -114,74 +161,165 @@ class ProtocolHandler:
         self.send_to_client(None, { "type": "settings", "values": msg })
 
         # Update settings in mongo
-        self.node.save_settings(msg['settings'])
+        self._market.save_settings(msg['settings'])
 
     def client_save_product(self, socket_handler, msg):
-        self._log.info("Save product: %s" % msg)
+        #self._log.info("Save product: %s" % msg)
 
         # Update settings in mongo
-        self.node.save_product(msg)
+        self._market.save_product(msg)
 
-    def client_remove_product(self, socket_handler, msg):
-        self._log.info("Remove product: %s" % msg)
+    def client_create_contract(self, socket_handler, contract):
+        self._log.info("New Contract: %s" % contract)
 
         # Update settings in mongo
-        self.node.remove_product(msg)
+        self._market.save_contract(contract)
+
+    def client_remove_contract(self, socket_handler, msg):
+        self._log.info("Remove contract: %s" % msg)
+
+        # Update settings in mongo
+        self._market.remove_contract(msg)
 
     def client_pay_order(self, socket_handler, msg):
 
         self._log.info("Marking Order as Paid: %s" % msg)
 
         # Update order in mongo
-        order = self.node.orders.get_order(msg['orderId'])
+        order = self._market.orders.get_order(msg['orderId'])
 
         # Send to exchange partner
-        self.node.orders.pay_order(order)
+        self._market.orders.pay_order(order)
 
     def client_ship_order(self, socket_handler, msg):
 
         self._log.info("Shipping order out: %s" % msg)
 
         # Update order in mongo
-        order = self.node.orders.get_order(msg['orderId'])
+        order = self._market.orders.get_order(msg['orderId'])
 
         # Send to exchange partner
-        self.node.orders.send_order(order)
+        self._market.orders.send_order(order)
 
     def client_generate_secret(self, socket_handler, msg):
 
-      new_secret = self.node.generate_new_secret()
+      new_secret = self._transport._generate_new_keypair()
       self.send_opening()
 
 
     def client_order(self, socket_handler, msg):
-        self.node.orders.on_order(msg)
+        self._market.orders.on_order(msg)
 
     def client_review(self, socket_handler, msg):
         pubkey = msg['pubkey'].decode('hex')
         text = msg['text']
         rating = msg['rating']
-        self.node.reputation.create_review(pubkey, text, rating)
+        self._market.reputation.create_review(pubkey, text, rating)
 
+
+    # Search for markets ATM
+    # TODO: multi-faceted search support
     def client_search(self, socket_handler, msg):
+
         self._log.info("[Search] %s"% msg)
-        response = self.node.lookup(msg)
-        if response:
-            self._log.info(response)
-            self.send_to_client(*response)
+        self._transport._dht.iterativeFindValue(msg['key'], callback=self.on_node_search_value)
+        #self._log.info('Result: %s' % result)
+
+        #response = self._market.lookup(msg)
+        #if response:
+        #    self._log.info(response)
+            #self.send_to_client(*response)
+
+
+    def client_query_store_products(self, socket_handler, msg):
+
+        self._log.info("Querying for Store Contracts")
+
+        # Query mongo for products
+        self._transport._dht.find_listings(self._transport, msg['key'], callback=self.on_find_products)
+
+    def on_find_products(self, results):
+
+      self._log.info('Found Contracts: %s' % type(results))
+      self._log.info(results)
+
+      if len(results):
+          data = results['data']
+          contracts = data['contracts']
+          signature = results['signature']
+          self._log.info('Signature: %s' % signature)
+
+          # TODO: Validate signature of listings matches data
+          #self._transport._myself.
+
+          # Go get listing metadata and then send it to the GUI
+          for contract in contracts:
+              self._transport._dht.iterativeFindValue(contract, callback=self.on_node_search_value)
+
+      #self.send_to_client(None, { "type": "store_products", "products": listings } )
 
     def client_shout(self, socket_handler, msg):
+        msg['uri'] = self._transport._uri
+        msg['pubkey'] = self._transport.pubkey
+        msg['senderGUID'] = self._transport.guid
         self._transport.send(protocol.shout(msg))
+
+    def on_node_search_value(self, results):
+        self._log.info('Listing Data: %s' % results)
+
+        # Fix newline issue
+        results_data = results.replace('\\n', '\n\r')
+        #self._log.info(results_data)
+
+        # Import gpg pubkey
+        gpg = gnupg.GPG(gnupghome="gpg")
+
+        # Retrieve JSON from the contract
+        # 1) Remove PGP Header
+        contract_data = ''.join(results.split('\n')[3:])
+        index_of_signature = contract_data.find('-----BEGIN PGP SIGNATURE-----', 0, len(contract_data))
+        contract_data_json = contract_data[0:index_of_signature]
+
+        contract_data_json = json.loads(contract_data_json)
+        seller_pubkey = contract_data_json.get('Seller').get('seller_PGP')
+
+        gpg.import_keys(seller_pubkey)
+
+        split_results = results.split('\n')
+        self._log.debug('DATA: %s' % split_results[3])
+
+        v = gpg.verify(results)
+        if v:
+            self.send_to_client(None, { "type": "new_listing", "data": contract_data_json })
+        else:
+            self._log.error('Could not verify signature of contract.')
+
+
+
+    def on_node_search_results(self, results):
+        if len(results) > 1:
+          self.send_to_client(None, {"type": "peers", "peers": self.get_peers()})
+        else:
+          # Add peer to list of markets
+          self.on_node_peer(results[0])
+
+          # Load page for the store
+          self._market.query_page(results[0]._guid)
+
+
 
     # messages coming from "the market"
     def on_node_peer(self, peer):
-        self._log.info("Add peer")
+        self._log.info("Add peer: %s" % peer)
+
 
         response = {'type': 'peer',
-                    'pubkey': peer._pub.encode('hex')
+                    'pubkey': peer._pub
                               if peer._pub
                               else 'unknown',
-                    #'nickname': peer.
+                    'guid': peer._guid
+                              if peer._guid
+                              else '',
                     'uri': peer._address}
         self.send_to_client(None, response)
 
@@ -224,12 +362,14 @@ class ProtocolHandler:
 
     def get_peers(self):
         peers = []
-        for uri, peer in self._transport._peers.items():
-            peer_item = {'uri': uri}
+
+        for peer in self._transport._dht._activePeers:
+            peer_item = {'uri': peer._address}
             if peer._pub:
                 peer_item['pubkey'] = peer._pub.encode('hex')
             else:
                 peer_item['pubkey'] = 'unknown'
+            peer_item['guid'] = peer._guid
             peers.append(peer_item)
 
         return peers
@@ -241,11 +381,11 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
     # Protects listeners
     listen_lock = threading.Lock()
 
-    def initialize(self, transport, node):
+    def initialize(self, transport, market):
         self._log = logging.getLogger(self.__class__.__name__)
         self._log.info("Initialize websockethandler")
-        self._app_handler = ProtocolHandler(transport, node, self)
-        self.node = node
+        self._app_handler = ProtocolHandler(transport, market, self)
+        self.market = market
         self._transport = transport
 
     def open(self):
@@ -263,14 +403,15 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
         with WebSocketHandler.listen_lock:
             self.listeners.remove(self)
 
-    def _check_request(self, request):
+    @staticmethod
+    def _check_request(request):
         return request.has_key("command") and request.has_key("id") and \
             request.has_key("params") and type(request["params"]) == dict
             #request.has_key("params") and type(request["params"]) == list
 
     def on_message(self, message):
 
-        self._log.info('Message: %s' % message)
+        #self._log.info('[On Message]: %s' % message)
 
         try:
             request = json.loads(message)
@@ -286,6 +427,9 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
 
     def _send_response(self, response):
         if self.ws_connection:
+            #self._log.info('Response: %s' % response)
+
+            
             self.write_message(json.dumps(response))
         #try:
         #    self.write_message(json.dumps(response))
